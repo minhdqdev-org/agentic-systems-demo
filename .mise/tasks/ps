@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Show what an app has running: mise run ps prompt-chaining"
+set -euo pipefail
+export TASK=ps
+# shellcheck source-path=SCRIPTDIR source=_apps
+source "$(dirname "${BASH_SOURCE[0]}")/_apps"
+
+app_dir="$(resolve_app "${1:-}")"
+cd "$app_dir"
+# Placeholders for the same reason as `demo-down`.
+GEMINI_API_KEY=- OPENROUTER_API_KEY=- exec docker compose ps

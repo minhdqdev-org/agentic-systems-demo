@@ -1,0 +1,144 @@
+name: CI
+
+# Code quality only. This repo publishes no images: each app is built locally from its own
+# Dockerfile by its own docker-compose.yaml, so there is nothing to push to Harbor and the
+# org's reusable build-and-push workflow does not apply here.
+#
+# Apps are discovered, not listed. An app is any apps/*/ with a docker-compose.yaml; the
+# Python gates are skipped for one with no pyproject.toml (bifrost-gateway is
+# infrastructure with no demo written against it yet), but its compose file is still
+# validated.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Discover apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.find.outputs.apps }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Find apps
+        id: find
+        # Adding an app needs no CI edit -- which also means an app pulled in as a git
+        # submodule is picked up automatically.
+        run: |
+          set -euo pipefail
+          apps=$(find apps -mindepth 2 -maxdepth 2 -name docker-compose.yaml -printf '%h\n' \
+                 | xargs -r -n1 basename | sort | jq -R . | jq -sc .)
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "Found: $apps"
+          [ "$apps" != "[]" ] || { echo "no apps found"; exit 1; }
+
+  app:
+    name: ${{ matrix.app }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.discover.outputs.apps) }}
+    defaults:
+      run:
+        # Each app carries its own lockfile and its own ruff/mypy/pytest config, so every
+        # gate runs from inside the app directory.
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Does this app have Python?
+        id: py
+        # An infrastructure-only app has no pyproject.toml; every Python gate below is
+        # conditioned on this so it is skipped rather than failing.
+        run: |
+          if [ -f pyproject.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Set up uv
+        if: steps.py.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/${{ matrix.app }}/uv.lock
+
+      - name: Install dependencies
+        if: steps.py.outputs.present == 'true'
+        # `--frozen` so a drifted lockfile fails the build instead of silently resolving
+        # to something a contributor's machine will not reproduce.
+        run: uv sync --extra dev --frozen
+
+      - name: Lint
+        if: steps.py.outputs.present == 'true'
+        run: uv run ruff check .
+
+      - name: Format check
+        if: steps.py.outputs.present == 'true'
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        if: steps.py.outputs.present == 'true'
+        run: uv run mypy src
+
+      - name: Test
+        if: steps.py.outputs.present == 'true'
+        # The tests deliberately exercise only the offline parts of the graph, so CI needs
+        # no provider key and no network. `build_graph()` must therefore never require a
+        # credential -- see docs/adding-an-app.md.
+        run: uv run pytest
+
+      - name: SAST (bandit)
+        if: steps.py.outputs.present == 'true'
+        run: uv run bandit -c pyproject.toml -r src -ll
+
+      - name: Dependency CVE scan (pip-audit)
+        if: steps.py.outputs.present == 'true'
+        run: uv run pip-audit
+
+      - name: Validate compose file
+        # Runs for every app, Python or not. Resolves every interpolation and path, so an
+        # app that references a service or a file that does not exist fails here rather
+        # than on a contributor's first run. The placeholders only satisfy the `${VAR:?}`
+        # guards -- nothing is started.
+        env:
+          GEMINI_API_KEY: ci-placeholder
+          OPENROUTER_API_KEY: ci-placeholder
+        run: docker compose config --quiet
+
+  shell:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run shellcheck
+        # The secrets scripts are the one place a mistake leaks a credential, so they get
+        # linted like the Python does.
+        run: shellcheck -x scripts/*.sh .mise/tasks/*
+
+  markdown:
+    name: Markdownlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@v24
+        with:
+          globs: "**/*.md"

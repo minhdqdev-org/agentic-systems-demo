@@ -1,0 +1,41 @@
+# Prompt chaining.
+#
+#   ../../scripts/with-secrets.sh docker compose run --rm demo --topic '...'
+#
+# or, from the repository root, `mise run demo prompt-chaining`.
+#
+# Everything this app needs is declared here and every path is inside this directory, so
+# the file still works if the app is moved into its own repository and pulled back in as a
+# submodule.
+#
+# There is no LLM gateway here. This chain runs every step on one Gemini model and calls
+# Google directly; a gateway it never routes through would be a second moving part in a
+# demo about prompt structure. The gateway lives in ../bifrost-gateway.
+
+name: prompt-chaining
+
+services:
+  demo:
+    build:
+      context: .
+    image: agentic-systems-demo/prompt-chaining:dev
+    environment:
+      # `:?` on purpose: a missing key must fail at `compose up` with a clear message
+      # rather than at the first model call with an opaque 401.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set it via scripts/with-secrets.sh or .env — see docs/secrets.md}
+      MODEL: ${MODEL:-gemini-3.5-flash-lite}
+    # The image's own user is uid 10001, but `./out` is a bind mount owned by whoever
+    # cloned the repo -- so `--output /out/post.md` failed with EACCES. Running as the
+    # caller's uid/gid makes anything written to /out land as their file. `mise run demo`
+    # fills these in; the 1000:1000 default covers a typical single-user Linux box.
+    user: "${DEMO_UID:-1000}:${DEMO_GID:-1000}"
+    volumes:
+      # So `--output /out/post.md` lands somewhere you can read afterwards.
+      - ./out:/out
+    # The console script is the image's ENTRYPOINT, so `docker compose run --rm demo
+    # --topic '...'` appends its arguments. `run` overrides `command` wholesale -- with the
+    # script there, the first flag would replace it and the container would exec `--topic`.
+    command: []
+    # Needed for `--review`, which prompts on stdin.
+    stdin_open: true
+    tty: true

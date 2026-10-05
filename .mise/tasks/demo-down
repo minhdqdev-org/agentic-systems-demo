@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Stop an app's containers: mise run demo-down prompt-chaining"
+set -euo pipefail
+export TASK=demo-down
+# shellcheck source-path=SCRIPTDIR source=_apps
+source "$(dirname "${BASH_SOURCE[0]}")/_apps"
+
+app_dir="$(resolve_app "${1:-}")"
+shift
+[[ "${1:-}" == "--" ]] && shift
+
+cd "$app_dir"
+# Compose resolves the `${VAR:?}` guards on every subcommand, `down` included. Teardown
+# needs no real key, so placeholders satisfy the guard without touching a secrets backend.
+GEMINI_API_KEY=- OPENROUTER_API_KEY=- exec docker compose down "$@"

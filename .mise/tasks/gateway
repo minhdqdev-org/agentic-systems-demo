@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Start an app's bifrost service: mise run gateway bifrost-gateway"
+set -euo pipefail
+export TASK=gateway
+# shellcheck source-path=SCRIPTDIR source=_apps
+source "$(dirname "${BASH_SOURCE[0]}")/_apps"
+
+app_dir="$(resolve_app "${1:-}")"
+# Not every app has a gateway -- prompt-chaining calls Google directly -- so say so rather
+# than letting compose emit "no such service: bifrost".
+grep -q '^  bifrost:' "$app_dir/docker-compose.yaml" || {
+  echo "app '$(basename "$app_dir")' has no bifrost service; try: mise run gateway bifrost-gateway" >&2
+  exit 1
+}
+cd "$app_dir"
+exec "$(repo_root)/scripts/with-secrets.sh" docker compose up -d --wait bifrost

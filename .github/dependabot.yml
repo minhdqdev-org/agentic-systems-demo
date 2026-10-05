@@ -1,0 +1,82 @@
+# Automated dependency updates.
+#
+# `mise run check` runs pip-audit as a blocking gate, but only when someone opens a PR.
+# Dependabot is what watches the gap between PRs; the existing gate then decides whether
+# the bump may merge.
+#
+# Each app has its own lockfile, so each needs its own `uv` entry -- add one when you add
+# an app. (An app that becomes a git submodule takes its Dependabot config with it, into
+# its own repository, and its entry here goes away.)
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/apps/prompt-chaining"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    # Supply-chain cooldown — do not remove. Adopting a release the moment it is
+    # published means racing to be the first victim of a compromised one. Majors get a
+    # longer hold, since that is where both breakage and hostile takeovers concentrate.
+    # Delays *version* updates only; advisory-driven security updates still open
+    # immediately, which is why the `security` group is kept separate.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+      # LangChain, LangGraph and the provider integrations move together and break
+      # together; one PR, one review, one run of the app.
+      langchain:
+        patterns:
+          - "langchain*"
+          - "langgraph*"
+      minor-and-patch:
+        patterns: ["*"]
+        exclude-patterns:
+          - "langchain*"
+          - "langgraph*"
+        update-types: ["minor", "patch"]
+
+  # Each app's runtime base image. It ships OS packages that accumulate CVEs
+  # independently of anything in uv.lock, and nothing else in this repo watches them.
+  #
+  # bifrost-gateway has no Dockerfile -- it pins `maximhq/bifrost` in its compose file, and
+  # Dependabot's docker ecosystem reads Dockerfiles, not compose. That image version is
+  # bumped by hand; check for a newer tag when touching the gateway.
+  - package-ecosystem: "docker"
+    directory: "/apps/prompt-chaining"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(docker)"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore(ci)"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      actions:
+        patterns: ["*"]

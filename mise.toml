@@ -1,0 +1,27 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[env]
+# Deliberately NOT `_.file = ".env"`. Loading the keys into every shell that cd's into
+# this repo is the habit docs/secrets.md is arguing against -- `scripts/with-secrets.sh`
+# puts them in one process, for the length of one command.
+SECRETS = "./scripts/with-secrets.sh"
+
+[tasks.help]
+description = "Show available tasks"
+run = "mise tasks"
+quiet = true
+
+[tasks.vault-bootstrap]
+description = "Write the provider keys into Vault and create the read policy + AppRole"
+run = "./scripts/vault-bootstrap.sh"
+interactive = true
+
+[tasks.docs-lint]
+description = "Lint the Markdown"
+run = "npx --yes markdownlint-cli2 '**/*.md'"
+
+# Each app owns its own dependencies, lockfile and quality config, so every task that
+# touches code takes an app name and lives in .mise/tasks/ as a script -- see the comment
+# in .mise/tasks/demo for why those are scripts rather than `run =` blocks.

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="Run an app in Docker: mise run demo prompt-chaining --topic '...'"
+#
+# A standalone task script rather than a `run =` block in mise.toml, for two reasons:
+# mise executes `run =` blocks with `sh` (no `pipefail`), and its argument parser rejects
+# unrecognised flags before the block ever sees them -- which makes `--topic` impossible
+# to forward. Script tasks get raw argv and a real bash.
+set -euo pipefail
+export TASK=demo
+# shellcheck source-path=SCRIPTDIR source=_apps
+source "$(dirname "${BASH_SOURCE[0]}")/_apps"
+
+app_dir="$(resolve_app "${1:-}")"
+shift
+# `mise run demo prompt-chaining -- --topic x` forwards the `--` literally; drop it so
+# both that form and the bare one work.
+[[ "${1:-}" == "--" ]] && shift
+
+# An infrastructure-only app has no demo service to run.
+grep -q '^  demo:' "$app_dir/docker-compose.yaml" || {
+  echo "app '$(basename "$app_dir")' has no demo service yet — see its README" >&2
+  exit 1
+}
+
+cd "$app_dir"
+# Run the container as the caller, so files it writes into the app's ./out bind mount are
+# owned by them rather than by the image's uid.
+export DEMO_UID DEMO_GID
+DEMO_UID="$(id -u)"
+DEMO_GID="$(id -g)"
+exec "$(repo_root)/scripts/with-secrets.sh" docker compose run --rm --build demo "$@"

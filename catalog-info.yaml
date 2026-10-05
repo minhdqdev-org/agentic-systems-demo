@@ -1,0 +1,27 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: agentic-systems-demo
+  description: Runnable demos of agentic-system patterns, built on LangGraph behind a Bifrost LLM gateway
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    vault.io/secrets-path: kv/minhdqdev/dev/agentic-systems-demo
+  tags:
+    - python
+    - langgraph
+    - langchain
+    - bifrost
+    - llm
+    - docker-compose
+  links:
+    - url: https://github.com/maximhq/bifrost
+      title: Bifrost LLM Gateway
+      icon: github
+    - url: https://vault.internal.minhdq.dev
+      title: Vault (provider keys)
+      icon: dashboard
+spec:
+  type: library
+  lifecycle: experimental
+  owner: minhdqdev
+  system: minhdq-platform

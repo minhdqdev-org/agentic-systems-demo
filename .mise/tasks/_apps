@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#MISE description="List the apps in this repo"
+# Shared helper: every other task discovers apps through this, so adding an app to the
+# repo is enough -- no task needs editing. An app is any directory under apps/ with a
+# pyproject.toml, which is also true of one pulled in as a git submodule.
+set -euo pipefail
+
+repo_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
+
+# Apps with Python code, i.e. anything the lint/type/test gates apply to. An app can
+# exist without any -- `bifrost-gateway` is infrastructure with no demo written against it
+# yet -- so this is deliberately narrower than list_all_apps.
+list_apps() {
+  local d
+  for d in "$(repo_root)"/apps/*/; do
+    [[ -f "${d}pyproject.toml" ]] || continue
+    basename "$d"
+  done
+}
+
+# Every app, including code-free ones. An app is a directory under apps/ with a compose
+# file, which is also true of one mounted as a git submodule.
+list_all_apps() {
+  local d
+  for d in "$(repo_root)"/apps/*/; do
+    [[ -f "${d}docker-compose.yaml" ]] || continue
+    basename "$d"
+  done
+}
+
+# resolve_app <name> [--python]
+#   Prints the app's directory. With --python, rejects an app that has no Python code, so
+#   `mise run check bifrost-gateway` says why rather than silently doing nothing.
+resolve_app() {
+  local name="${1:-}" require_python="${2:-}" root lister=list_all_apps
+  root="$(repo_root)"
+  [[ "$require_python" == "--python" ]] && lister=list_apps
+
+  if [[ -z "$name" ]]; then
+    echo "usage: mise run ${TASK:-<task>} <app> [args...]" >&2
+    echo "available:" >&2
+    "$lister" | sed 's/^/  - /' >&2
+    return 1
+  fi
+  if [[ "$require_python" == "--python" && ! -f "$root/apps/$name/pyproject.toml" ]]; then
+    if [[ -d "$root/apps/$name" ]]; then
+      echo "app '$name' has no Python code, so there is nothing for this task to do" >&2
+    else
+      echo "no such app: $name" >&2
+    fi
+    list_apps | sed 's/^/  - /' >&2
+    return 1
+  fi
+  if [[ ! -f "$root/apps/$name/docker-compose.yaml" ]]; then
+    echo "no such app: $name" >&2
+    "$lister" | sed 's/^/  - /' >&2
+    return 1
+  fi
+  echo "$root/apps/$name"
+}
+
+# Running this file directly just lists the apps.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  list_all_apps
+fi

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "providers": {
+    "gemini": {
+      "keys": [
+        {
+          "name": "gemini-key-1",
+          "value": "env.GEMINI_API_KEY",
+          "models": ["*"],
+          "weight": 1
+        }
+      ],
+      "network_config": {
+        "default_request_timeout_in_seconds": 300
+      }
+    },
+    "openrouter": {
+      "keys": [
+        {
+          "name": "openrouter-key-1",
+          "value": "env.OPENROUTER_API_KEY",
+          "models": ["*"],
+          "weight": 1
+        }
+      ],
+      "network_config": {
+        "default_request_timeout_in_seconds": 300
+      }
+    }
+  },
+  "client": {
+    "drop_excess_requests": false,
+    "initial_pool_size": 50,
+    "allowed_origins": ["*"],
+    "enable_logging": true,
+    "enforce_auth_on_inference": false,
+    "max_request_body_size_mb": 20
+  },
+  "config_store": {
+    "enabled": false
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "/app/data/logs.db"
+    }
+  }
+}

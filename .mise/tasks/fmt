@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Format an app with ruff (or every app): mise run fmt [prompt-chaining]"
+set -euo pipefail
+export TASK=fmt
+# shellcheck source-path=SCRIPTDIR source=_apps
+source "$(dirname "${BASH_SOURCE[0]}")/_apps"
+
+root="$(repo_root)"
+if [[ -n "${1:-}" ]]; then
+  # Assigned in two steps on purpose: a non-zero exit from resolve_app inside a nested
+  # command substitution is swallowed, which turned an unknown app name into an empty
+  # app list and a bare "FAILED:" instead of the message explaining why.
+  app_dir="$(resolve_app "$1" --python)" || exit 1
+  apps=("$(basename "$app_dir")")
+else
+  mapfile -t apps < <(list_apps)
+fi
+
+for app in "${apps[@]}"; do
+  echo "════ ${app} ════"
+  (cd "$root/apps/$app" && uv run ruff check --fix . && uv run ruff format .)
+done

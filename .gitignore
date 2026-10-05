@@ -1,0 +1,27 @@
+# Secrets. `.env` is the fallback backend; the vault backend keeps keys off disk
+# entirely (docs/secrets.md). Either way nothing of the sort gets committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# App output
+apps/*/out/*
+!apps/*/out/.gitkeep
+
+# Editors / OS
+.DS_Store
+.idea/

@@ -1,0 +1,61 @@
+# The Bifrost LLM gateway, on its own.
+#
+#   ../../scripts/with-secrets.sh docker compose up -d
+#
+# or, from the repository root, `mise run gateway bifrost-gateway`.
+#
+# This app has no demo code yet -- it is the gateway, ready for a demo that needs what a
+# gateway gives you: one OpenAI-shaped endpoint in front of several providers, per-step
+# model routing without a second SDK, and a request log across the whole run.
+#
+# `prompt-chaining` deliberately does *not* use this. It runs on a single Gemini model and
+# calls Google directly, because a gateway it never routes through would be ceremony that
+# obscured the pattern it is teaching.
+
+name: bifrost-gateway
+
+services:
+  bifrost:
+    image: maximhq/bifrost:v2.0.0
+    restart: unless-stopped
+    ports:
+      - "${BIFROST_PORT:-8080}:8080"
+    environment:
+      # APP_HOST/APP_PORT/APP_DIR already default correctly in the image; only the noise
+      # level is worth setting here.
+      LOG_LEVEL: ${BIFROST_LOG_LEVEL:-info}
+      # `:?` on purpose: a missing key must fail at `compose up` with a clear message
+      # rather than at the first model call with an opaque 401.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set it via scripts/with-secrets.sh or .env — see docs/secrets.md}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set it via scripts/with-secrets.sh or .env — see docs/secrets.md}
+    volumes:
+      # `config.json` is the source of truth: the gateway runs with `config_store.enabled:
+      # false`, so it re-reads this file on every start and UI edits are not persisted.
+      # Change the file, `docker compose restart bifrost`, and the change is live.
+      - ./config.json:/app/data/config.json:ro
+      # Request logs, so the Bifrost UI on :8080 shows every call that went through.
+      - bifrost-data:/app/data
+    healthcheck:
+      # The image ships this probe already; it is repeated here only to poll every 3s
+      # instead of every 30s, so a `depends_on: service_healthy` does not make a run wait
+      # out a half-minute interval.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  bifrost-data:
+
+# Two lines at boot look alarming and are not:
+#
+#   "failed to initialize governance plugin: ... governance config is nil"
+#   "auth middleware requires config store, skipping auth middleware initialization"
+#
+# Both are consequences of `config_store.enabled: false`. Governance is Bifrost's
+# budget/rate-limit plugin and needs a database to persist counters; the auth middleware
+# backs virtual keys, which this gateway does not use (`enforce_auth_on_inference:
+# false`). Neither is needed here, and turning the config store on to silence them would
+# cost the property that makes this reproducible -- that config.json is the only source of
+# truth on every boot.
